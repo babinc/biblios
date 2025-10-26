@@ -100,6 +100,30 @@ impl Bible {
     }
 }
 
+/// Get the book ID for Bible SuperSearch databases (1-66)
+pub fn book_name_to_id(name: &str) -> Option<u32> {
+    BOOK_ORDER.iter()
+        .position(|(short_name, _, _, _)| *short_name == name)
+        .map(|idx| (idx + 1) as u32)
+}
+
+/// Get the book name from ID (1-66)
+pub fn book_id_to_name(id: u32) -> Option<&'static str> {
+    if id < 1 || id as usize > BOOK_ORDER.len() {
+        return None;
+    }
+    Some(BOOK_ORDER[(id - 1) as usize].0)
+}
+
+/// Get the number of chapters in a book
+pub fn get_chapter_count(book_name: &str) -> u32 {
+    BOOK_ORDER
+        .iter()
+        .find(|(short, full, _, _)| *short == book_name || *full == book_name)
+        .map(|(_, _, _, count)| *count)
+        .unwrap_or(0)
+}
+
 /// Standard book order for easy reference
 pub const BOOK_ORDER: &[(&str, &str, Testament, u32)] = &[
     // Old Testament

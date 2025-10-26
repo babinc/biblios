@@ -1,148 +1,96 @@
 use crate::app::App;
-use crate::config::settings::InputMode;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Clear, Paragraph},
     Frame,
 };
 
-/// Render the help view
+/// Render the help modal
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
-    let is_vim_mode = app.settings.input_mode == InputMode::Vim;
+    // Create centered modal (80% width, 85% height)
+    let modal_area = centered_rect(80, 85, area);
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),     // Help content
-            Constraint::Length(3),  // Footer
-        ])
-        .split(area);
+    // Clear the area behind the modal
+    f.render_widget(Clear, modal_area);
 
-    render_help_content(f, app, is_vim_mode, chunks[0]);
-    render_help_footer(f, app, chunks[1]);
-}
+    let help_text = help_text_content(app);
 
-fn render_help_content(f: &mut Frame, app: &App, is_vim_mode: bool, area: Rect) {
-    let help_text = if is_vim_mode {
-        vim_help_text(app)
-    } else {
-        normal_help_text(app)
-    };
+    let block = app.theme.block_modal_with_title("? Help");
 
     let paragraph = Paragraph::new(help_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(app.theme.border_style())
-                .title(" Biblios Help - Press ESC or ? to close "),
-        )
-        .style(app.theme.text_style());
+        .block(block)
+        .style(app.theme.text());
 
-    f.render_widget(paragraph, area);
+    f.render_widget(paragraph, modal_area);
 }
 
-fn render_help_footer(f: &mut Frame, app: &App, area: Rect) {
-    let footer_text = "Press 'i' to toggle between Vim and Normal input modes";
+/// Helper function to create a centered rect
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
 
-    let footer = Paragraph::new(footer_text)
-        .style(app.theme.secondary_style())
-        .block(Block::default().borders(Borders::ALL).border_style(app.theme.border_style()));
-
-    f.render_widget(footer, area);
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
 
-fn vim_help_text(app: &App) -> Vec<Line<'static>> {
+fn help_text_content(app: &App) -> Vec<Line<'static>> {
     vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("Biblios - TUI Bible Reader", app.theme.header_style()),
-        ]),
-        Line::from(vec![
-            Span::styled("Vim Mode Keybindings", app.theme.highlight_style()),
+            Span::styled("Biblios - TUI Bible Reader", app.theme.heading()),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("NAVIGATION", app.theme.secondary_style()),
+            Span::styled("NAVIGATION", app.theme.text_secondary()),
         ]),
-        Line::from("  j/k           - Scroll down/up one verse"),
-        Line::from("  h/l           - Previous/next verse"),
+        Line::from("  j/k or ↓/↑    - Scroll through verses continuously"),
+        Line::from("  h/l or ←/→    - Previous/next verse"),
         Line::from("  Ctrl+d/Ctrl+u - Page down/up"),
-        Line::from("  g/G           - Go to top/bottom"),
-        Line::from("  [ / ]         - Previous/next chapter"),
-        Line::from("  { / }         - Previous/next book"),
+        Line::from("  Ctrl+u/PgUp   - Scroll up by page"),
+        Line::from("  G             - Go to bottom"),
         Line::from(""),
         Line::from(vec![
-            Span::styled("FEATURES", app.theme.secondary_style()),
+            Span::styled("FEATURES", app.theme.text_secondary()),
         ]),
-        Line::from("  /             - Open search"),
+        Line::from("  g             - Go to (book/chapter/verse selector)"),
+        Line::from("  /             - Search verses"),
         Line::from("  n/N           - Next/previous search result"),
         Line::from("  m             - Toggle bookmark on current verse"),
         Line::from("  b             - View bookmarks"),
         Line::from("  s             - Open settings"),
-        Line::from("  f             - Toggle focus mode"),
-        Line::from("  i             - Toggle input mode (Vim/Normal)"),
         Line::from(""),
         Line::from(vec![
-            Span::styled("GENERAL", app.theme.secondary_style()),
+            Span::styled("GENERAL", app.theme.text_secondary()),
         ]),
         Line::from("  ?             - Show this help"),
-        Line::from("  q             - Quit"),
+        Line::from("  q or Ctrl+C   - Quit"),
         Line::from("  ESC           - Close modal/go back"),
         Line::from(""),
         Line::from(vec![
-            Span::styled("TIPS", app.theme.highlight_style()),
+            Span::styled("TIPS", app.theme.accent()),
         ]),
-        Line::from("  • Use [ and ] to navigate chapters easily"),
-        Line::from("  • Press 'm' to bookmark verses you want to remember"),
-        Line::from("  • Use focus mode (f) for distraction-free reading"),
-        Line::from("  • Search (/) works across all verses"),
-    ]
-}
-
-fn normal_help_text(app: &App) -> Vec<Line<'static>> {
-    vec![
+        Line::from("  • Both vim (j/k) and arrow keys work everywhere"),
+        Line::from("  • Press 'g' to quickly jump to any book/chapter/verse"),
+        Line::from("  • In the selector: arrow keys navigate, letters filter"),
+        Line::from("  • Bookmarks ('m') persist across sessions"),
+        Line::from("  • Search ('/') works across the entire Bible"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Biblios - TUI Bible Reader", app.theme.header_style()),
-        ]),
-        Line::from(vec![
-            Span::styled("Normal Mode Keybindings", app.theme.highlight_style()),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("NAVIGATION", app.theme.secondary_style()),
-        ]),
-        Line::from("  Arrow Keys     - Navigate verses"),
-        Line::from("  PageUp/Down    - Scroll by page"),
-        Line::from("  Home/End       - Go to top/bottom"),
-        Line::from("  Ctrl+Left/Right - Previous/next chapter"),
-        Line::from("  Ctrl+Up/Down   - Previous/next book"),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("FEATURES", app.theme.secondary_style()),
-        ]),
-        Line::from("  Ctrl+F        - Open search"),
-        Line::from("  F3            - Next search result"),
-        Line::from("  Ctrl+B        - Toggle bookmark on current verse"),
-        Line::from("  Ctrl+M        - View bookmarks"),
-        Line::from("  Ctrl+,        - Open settings"),
-        Line::from("  F2            - Toggle focus mode"),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("GENERAL", app.theme.secondary_style()),
-        ]),
-        Line::from("  F1 or ?       - Show this help"),
-        Line::from("  Ctrl+Q/Ctrl+C - Quit"),
-        Line::from("  ESC           - Close modal/go back"),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("TIPS", app.theme.highlight_style()),
-        ]),
-        Line::from("  • Use Ctrl+Arrow keys to navigate chapters and books"),
-        Line::from("  • Bookmark verses with Ctrl+B for easy reference"),
-        Line::from("  • Use focus mode (F2) for distraction-free reading"),
-        Line::from("  • Search (Ctrl+F) works across all verses"),
-        Line::from("  • Switch to Vim mode for faster navigation (press 'i' in settings)"),
+        Line::from(Span::styled(
+            "Press ESC to close",
+            app.theme.text_muted(),
+        )),
     ]
 }

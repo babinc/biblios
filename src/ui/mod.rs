@@ -1,13 +1,18 @@
+pub mod bookmarks;
+pub mod components;
+pub mod help;
+pub mod icons;
 pub mod reader;
 pub mod search;
 pub mod settings;
-pub mod bookmarks;
+pub mod theme_picker;
 pub mod themes;
-pub mod help;
+pub mod verse_selector;
 
 use crate::app::{App, ViewMode};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -17,15 +22,44 @@ pub fn render(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1), // Key bindings bar
             Constraint::Length(3), // Header
             Constraint::Min(0),     // Main content
-            Constraint::Length(3),  // Footer/status
+            Constraint::Length(1),  // Footer/status
         ])
         .split(f.area());
 
-    render_header(f, app, chunks[0]);
-    render_content(f, app, chunks[1]);
-    render_footer(f, app, chunks[2]);
+    render_keybindings(f, app, chunks[0]);
+    render_header(f, app, chunks[1]);
+    render_content(f, app, chunks[2]);
+    render_footer(f, app, chunks[3]);
+}
+
+/// Render the key bindings bar
+fn render_keybindings(f: &mut Frame, app: &App, area: Rect) {
+    let keybindings = vec![
+        Span::styled(" g", app.theme.accent()),
+        Span::styled(":Go ", app.theme.text_muted()),
+        Span::styled("j/k", app.theme.accent()),
+        Span::styled(":Scroll ", app.theme.text_muted()),
+        Span::styled("m", app.theme.accent()),
+        Span::styled(":Bookmark ", app.theme.text_muted()),
+        Span::styled("b", app.theme.accent()),
+        Span::styled(":Bookmarks ", app.theme.text_muted()),
+        Span::styled("/", app.theme.accent()),
+        Span::styled(":Search ", app.theme.text_muted()),
+        Span::styled("s", app.theme.accent()),
+        Span::styled(":Settings ", app.theme.text_muted()),
+        Span::styled("?", app.theme.accent()),
+        Span::styled(":Help ", app.theme.text_muted()),
+        Span::styled("q", app.theme.accent()),
+        Span::styled(":Quit ", app.theme.text_muted()),
+    ];
+
+    let paragraph = Paragraph::new(Line::from(keybindings))
+        .style(app.theme.text().bg(app.theme.bg_secondary));
+
+    f.render_widget(paragraph, area);
 }
 
 /// Render the header
@@ -37,7 +71,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let header = Paragraph::new(title)
-        .style(app.theme.header_style())
+        .style(app.theme.heading().bg(app.theme.bg_secondary))
         .block(Block::default().borders(Borders::ALL).border_style(app.theme.border_style()));
 
     f.render_widget(header, area);
@@ -49,38 +83,47 @@ fn render_content(f: &mut Frame, app: &App, area: Rect) {
         ViewMode::Reader => reader::render(f, app, area),
         ViewMode::Search => search::render(f, app, area),
         ViewMode::Bookmarks => bookmarks::render(f, app, area),
-        ViewMode::Settings => settings::render(f, app, area),
-        ViewMode::Help => help::render(f, app, area),
+        ViewMode::Settings => {
+            // Settings is now a modal, so render reader underneath
+            reader::render(f, app, area);
+        }
+        ViewMode::Help => {
+            // Help is now a modal, so render reader underneath
+            reader::render(f, app, area);
+        }
+    }
+
+    // Render verse selector modal on top if open
+    if app.selector_open {
+        verse_selector::render(f, app, f.area());
+    }
+
+    // Render settings modal on top if open
+    if app.settings_open {
+        settings::render(f, app, f.area());
+    }
+
+    // Render theme picker modal on top of settings if open
+    if app.theme_picker_open {
+        theme_picker::render(f, app, f.area());
+    }
+
+    // Render help modal on top if open
+    if app.help_open {
+        help::render(f, app, f.area());
     }
 }
 
 /// Render the footer with status information
 fn render_footer(f: &mut Frame, app: &App, area: Rect) {
-    let input_mode = match app.settings.input_mode {
-        crate::config::settings::InputMode::Vim => "VIM",
-        crate::config::settings::InputMode::Normal => "NORMAL",
-    };
-
-    let vim_mode_indicator = if app.settings.input_mode == crate::config::settings::InputMode::Vim {
-        if app.vim_normal_mode { " [N] " } else { " [I] " }
-    } else {
-        ""
-    };
-
-    let focus_indicator = if app.settings.focus_mode { " [FOCUS] " } else { "" };
-
     let status = format!(
-        " {} | {} | Theme: {} {}{} | Press ? for Help",
-        input_mode,
+        " {} | Theme: {} ",
         app.settings.translation,
-        app.theme.name,
-        vim_mode_indicator,
-        focus_indicator
+        app.theme.name
     );
 
     let footer = Paragraph::new(status)
-        .style(app.theme.secondary_style())
-        .block(Block::default().borders(Borders::ALL).border_style(app.theme.border_style()));
+        .style(app.theme.text_secondary().bg(app.theme.bg_secondary));
 
     f.render_widget(footer, area);
 }

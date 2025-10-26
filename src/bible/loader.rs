@@ -63,11 +63,15 @@ impl BibleLoader {
 
     /// Load a specific chapter
     pub fn load_chapter(&self, book: &str, chapter: u32) -> Result<Chapter> {
+        // Convert book name to ID for Bible SuperSearch databases
+        let book_id = super::book_name_to_id(book)
+            .ok_or_else(|| anyhow::anyhow!("Unknown book: {}", book))?;
+
         let mut stmt = self.conn.prepare(
             "SELECT verse, text FROM verses WHERE book = ?1 AND chapter = ?2 ORDER BY verse"
         )?;
 
-        let verses = stmt.query_map(params![book, chapter], |row| {
+        let verses = stmt.query_map(params![book_id, chapter], |row| {
             let verse_num: u32 = row.get(0)?;
             let text: String = row.get(1)?;
 
@@ -87,12 +91,16 @@ impl BibleLoader {
 
     /// Load a specific verse
     pub fn load_verse(&self, reference: &VerseReference) -> Result<Option<Verse>> {
+        // Convert book name to ID for Bible SuperSearch databases
+        let book_id = super::book_name_to_id(&reference.book)
+            .ok_or_else(|| anyhow::anyhow!("Unknown book: {}", reference.book))?;
+
         let mut stmt = self.conn.prepare(
             "SELECT text FROM verses WHERE book = ?1 AND chapter = ?2 AND verse = ?3"
         )?;
 
         let result = stmt.query_row(
-            params![&reference.book, reference.chapter, reference.verse],
+            params![book_id, reference.chapter, reference.verse],
             |row| {
                 let text: String = row.get(0)?;
                 Ok(Verse {
@@ -120,13 +128,18 @@ impl BibleLoader {
         )?;
 
         let verses = stmt.query_map(params![search_query, limit as i64], |row| {
-            let book: String = row.get(0)?;
+            let book_id: u32 = row.get(0)?;
             let chapter: u32 = row.get(1)?;
             let verse: u32 = row.get(2)?;
             let text: String = row.get(3)?;
 
+            // Convert book ID back to name
+            let book_name = super::book_id_to_name(book_id)
+                .unwrap_or("Unknown")
+                .to_string();
+
             Ok(Verse {
-                reference: VerseReference::new(book, chapter, verse),
+                reference: VerseReference::new(book_name, chapter, verse),
                 text,
             })
         })?

@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 /// Handle key events in normal (non-Vim) mode
 pub fn handle_key(event: KeyEvent) -> Action {
     match event.code {
-        // Navigation with arrow keys
+        // Navigation with arrow keys (up/down now flow continuously through chapters and books)
         KeyCode::Down => Action::ScrollDown,
         KeyCode::Up => Action::ScrollUp,
         KeyCode::Left => Action::PreviousVerse,
@@ -16,23 +16,20 @@ pub fn handle_key(event: KeyEvent) -> Action {
         KeyCode::Home => Action::GoToTop,
         KeyCode::End => Action::GoToBottom,
 
-        // Chapter/Book navigation with Ctrl
-        KeyCode::Right if event.modifiers.contains(KeyModifiers::CONTROL) => Action::NextChapter,
-        KeyCode::Left if event.modifiers.contains(KeyModifiers::CONTROL) => Action::PreviousChapter,
-        KeyCode::Down if event.modifiers.contains(KeyModifiers::CONTROL) => Action::NextBook,
-        KeyCode::Up if event.modifiers.contains(KeyModifiers::CONTROL) => Action::PreviousBook,
+        // Go to verse selector
+        KeyCode::Char('g') if event.modifiers.contains(KeyModifiers::CONTROL) => Action::OpenVerseSelector,
 
         // Search
+        KeyCode::Char('/') => Action::OpenSearch,
         KeyCode::Char('f') if event.modifiers.contains(KeyModifiers::CONTROL) => Action::OpenSearch,
-        KeyCode::F(3) => Action::SearchNext, // F3 for next search result
+        KeyCode::F(3) => Action::SearchNext,
 
         // Bookmarks
-        KeyCode::Char('b') if event.modifiers.contains(KeyModifiers::CONTROL) => Action::ToggleBookmark,
-        KeyCode::Char('m') if event.modifiers.contains(KeyModifiers::CONTROL) => Action::OpenBookmarks,
+        KeyCode::Char('m') => Action::ToggleBookmark,
+        KeyCode::Char('b') => Action::OpenBookmarks,
 
         // Settings
-        KeyCode::Char(',') if event.modifiers.contains(KeyModifiers::CONTROL) => Action::OpenSettings,
-        KeyCode::F(2) => Action::ToggleFocusMode,
+        KeyCode::Char('s') => Action::OpenSettings,
 
         // Help
         KeyCode::F(1) => Action::OpenHelp,

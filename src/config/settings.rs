@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     /// Current translation ID
     pub translation: String,
@@ -18,11 +19,11 @@ pub struct Settings {
     /// Font size (for future terminal size adjustments)
     pub font_size: u16,
 
-    /// Enable focus mode by default
-    pub focus_mode: bool,
-
     /// Show verse numbers
     pub show_verse_numbers: bool,
+
+    /// Add spacing between verses
+    pub verse_spacing: bool,
 
     /// Number of verses per page
     pub verses_per_page: usize,
@@ -44,8 +45,8 @@ impl Default for Settings {
             input_mode: InputMode::Normal,
             theme: "default".to_string(),
             font_size: 14,
-            focus_mode: false,
             show_verse_numbers: true,
+            verse_spacing: true,
             verses_per_page: 20,
             search_limit: 100,
         }
@@ -95,10 +96,5 @@ impl Settings {
             InputMode::Normal => InputMode::Vim,
             InputMode::Vim => InputMode::Normal,
         };
-    }
-
-    /// Toggle focus mode
-    pub fn toggle_focus_mode(&mut self) {
-        self.focus_mode = !self.focus_mode;
     }
 }

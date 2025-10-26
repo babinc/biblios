@@ -65,8 +65,21 @@ fn run_app<B: ratatui::backend::Backend>(
                 }
 
                 // Process key event
-                let vim_mode = app.settings.input_mode == config::settings::InputMode::Vim;
-                let action = input::process_key_event(key, vim_mode, app.vim_normal_mode);
+                let action = if app.selector_open {
+                    // When selector is open, handle text input specially
+                    input::process_selector_key_event(key)
+                } else if app.theme_picker_open {
+                    // Theme picker allows navigation
+                    input::process_modal_key_event(key, true)
+                } else if app.settings_open {
+                    // Settings modal allows navigation to change settings
+                    input::process_modal_key_event(key, true)
+                } else if app.help_open {
+                    // Help modal is read-only, only allow close
+                    input::process_modal_key_event(key, false)
+                } else {
+                    input::process_key_event(key)
+                };
 
                 app.handle_action(action)?;
 
@@ -80,17 +93,25 @@ fn run_app<B: ratatui::backend::Backend>(
     Ok(())
 }
 
-/// Get or create a sample Bible database for testing
+/// Get the KJV Bible database path
 fn get_or_create_sample_db() -> Result<String> {
     let data_dir = config::data_dir()?;
-    let db_path = data_dir.join("sample.db");
+    let translations_dir = data_dir.join("translations");
+    let kjv_path = translations_dir.join("kjv.sqlite");
 
-    // If database doesn't exist, create a sample one
-    if !db_path.exists() {
-        create_sample_database(&db_path)?;
+    // If KJV doesn't exist, check for it or create sample
+    if !kjv_path.exists() {
+        eprintln!("KJV Bible not found at: {}", kjv_path.display());
+        eprintln!("Please run './download_translations.sh' to download Bible translations.");
+        eprintln!("Creating a small sample database for now...");
+        let sample_path = data_dir.join("sample.db");
+        if !sample_path.exists() {
+            create_sample_database(&sample_path)?;
+        }
+        return Ok(sample_path.to_string_lossy().to_string());
     }
 
-    Ok(db_path.to_string_lossy().to_string())
+    Ok(kjv_path.to_string_lossy().to_string())
 }
 
 /// Create a sample Bible database with John 3:16-17

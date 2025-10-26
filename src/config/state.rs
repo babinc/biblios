@@ -4,22 +4,27 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-/// Tracks reading position and state
+/// Tracks the user's reading position and session state
+///
+/// This state is persisted between application runs, allowing the user
+/// to resume reading where they left off.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadingState {
-    /// Current verse being read
+    /// The specific verse reference currently being read (optional)
     pub current_verse: Option<VerseReference>,
 
-    /// Current book being read
+    /// The book currently being read (e.g., "John", "Gen")
     pub current_book: Option<String>,
 
-    /// Current chapter being read
+    /// The chapter number currently being read
     pub current_chapter: Option<u32>,
 
-    /// Scroll position within chapter
-    pub scroll_offset: usize,
+    /// Index of the verse being read within the current chapter (0-based)
+    /// This is the verse that will be highlighted and centered on screen
+    #[serde(rename = "scroll_offset")] // Keep old name for backward compatibility
+    pub current_verse_index: usize,
 
-    /// Last updated timestamp
+    /// ISO 8601 timestamp of last update
     pub last_updated: String,
 }
 
@@ -29,7 +34,7 @@ impl Default for ReadingState {
             current_verse: None,
             current_book: Some("John".to_string()),
             current_chapter: Some(1),
-            scroll_offset: 0,
+            current_verse_index: 0,
             last_updated: chrono::Utc::now().to_rfc3339(),
         }
     }
