@@ -15,24 +15,54 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
 /// Render normal reading mode with all UI elements
 fn render_normal_mode(f: &mut Frame, app: &App, area: Rect) {
-    // Main layout: top bar + content + status bar
-    let main_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
+    // Main layout: sample banner (optional) + top bar + content + status bar
+    let constraints = if app.using_sample_data {
+        vec![
+            Constraint::Length(3),  // Sample data banner
             Constraint::Length(3),  // Top bar
             Constraint::Min(0),     // Content (full width)
             Constraint::Length(1),  // Status bar
-        ])
+        ]
+    } else {
+        vec![
+            Constraint::Length(3),  // Top bar
+            Constraint::Min(0),     // Content (full width)
+            Constraint::Length(1),  // Status bar
+        ]
+    };
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
         .split(area);
 
-    // Render elegant top bar
-    render_top_bar(f, app, main_chunks[0]);
+    if app.using_sample_data {
+        // Render sample data banner
+        render_sample_data_banner(f, app, main_chunks[0]);
+        render_top_bar(f, app, main_chunks[1]);
+        render_reading_area(f, app, main_chunks[2]);
+        render_status_bar(f, app, main_chunks[3]);
+    } else {
+        render_top_bar(f, app, main_chunks[0]);
+        render_reading_area(f, app, main_chunks[1]);
+        render_status_bar(f, app, main_chunks[2]);
+    }
+}
 
-    // Render full-width reading area (no sidebar)
-    render_reading_area(f, app, main_chunks[1]);
+/// Render sample data banner when no full Bible is downloaded
+fn render_sample_data_banner(f: &mut Frame, app: &App, area: Rect) {
+    let banner_text = Line::from(vec![
+        Span::styled(" Sample data only ", Style::default().fg(app.theme.accent_warning)),
+        Span::styled("| Press ", Style::default().fg(app.theme.text_muted)),
+        Span::styled("D", Style::default().fg(app.theme.accent_primary).add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::styled(" to download the full KJV Bible", Style::default().fg(app.theme.text_muted)),
+    ]);
 
-    // Render status bar
-    render_status_bar(f, app, main_chunks[2]);
+    let banner = Paragraph::new(banner_text)
+        .alignment(Alignment::Center)
+        .style(Style::default().bg(app.theme.bg_secondary));
+
+    f.render_widget(banner, area);
 }
 
 /// Render elegant top bar with title and metadata

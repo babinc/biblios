@@ -31,3 +31,6 @@ nucleo = "0.5"
 
 # Async runtime (for future features)
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "time"] }
+
+# HTTP client for downloading Bibles
+ureq = { version = "2.9", features = ["json", "native-tls"] }

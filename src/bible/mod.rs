@@ -1,6 +1,7 @@
 pub mod loader;
 pub mod parser;
 pub mod search;
+pub mod translations;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

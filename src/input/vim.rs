@@ -32,6 +32,9 @@ pub fn handle_key(event: KeyEvent) -> Action {
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::F(1) => Action::OpenHelp,
 
+        // Download Bible
+        KeyCode::Char('D') => Action::DownloadBible,
+
         // General
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::Escape,

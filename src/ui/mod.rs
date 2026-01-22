@@ -1,5 +1,6 @@
 pub mod bookmarks;
 pub mod components;
+pub mod download;
 pub mod help;
 pub mod icons;
 pub mod reader;
@@ -111,6 +112,11 @@ fn render_content(f: &mut Frame, app: &App, area: Rect) {
     // Render help modal on top if open
     if app.help_open {
         help::render(f, app, f.area());
+    }
+
+    // Render download modal on top if open
+    if app.download_modal_open {
+        download::render(f, app);
     }
 }
 

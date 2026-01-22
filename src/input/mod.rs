@@ -38,6 +38,9 @@ pub enum Action {
     // Help
     OpenHelp,
 
+    // Download
+    DownloadBible,
+
     // General
     Quit,
     Enter,

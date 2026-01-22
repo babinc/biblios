@@ -81,6 +81,27 @@ pub struct App {
 
     /// Whether the app should quit
     pub should_quit: bool,
+
+    /// Whether using sample data (no full Bible downloaded)
+    pub using_sample_data: bool,
+
+    /// Download modal state
+    pub download_modal_open: bool,
+    pub download_status: DownloadStatus,
+    pub download_selected_index: usize,
+}
+
+/// Status of Bible download
+#[derive(Debug, Clone, PartialEq)]
+pub enum DownloadStatus {
+    /// Ready to download
+    Ready,
+    /// Currently downloading
+    Downloading(String),
+    /// Download completed successfully
+    Complete,
+    /// Download failed with error message
+    Failed(String),
 }
 
 /// Different view modes available in the application
@@ -137,13 +158,18 @@ impl App {
             theme_picker_open: false,
             theme_picker_index: 0,
             should_quit: false,
+            using_sample_data: false,
+            download_modal_open: false,
+            download_status: DownloadStatus::Ready,
+            download_selected_index: 0,
         })
     }
 
     /// Initialize with a Bible database
-    pub fn with_bible(mut self, db_path: &str) -> Result<Self> {
+    pub fn with_bible(mut self, db_path: &str, is_sample: bool) -> Result<Self> {
         let loader = BibleLoader::new(db_path)?;
         self.loader = Some(loader);
+        self.using_sample_data = is_sample;
         self.load_current_chapter()?;
         Ok(self)
     }
@@ -314,6 +340,72 @@ impl App {
             }
         }
 
+        // If download modal is open, handle its actions
+        if self.download_modal_open {
+            match action {
+                Action::Escape => {
+                    // Can only close if not downloading
+                    if !matches!(self.download_status, DownloadStatus::Downloading(_)) {
+                        self.download_modal_open = false;
+                        self.download_status = DownloadStatus::Ready;
+                    }
+                    return Ok(());
+                }
+                Action::ScrollUp => {
+                    // Navigate translation list (only when ready)
+                    if matches!(self.download_status, DownloadStatus::Ready) {
+                        let count = crate::bible::translations::AVAILABLE_TRANSLATIONS.len();
+                        if self.download_selected_index > 0 {
+                            self.download_selected_index -= 1;
+                        } else {
+                            self.download_selected_index = count - 1;
+                        }
+                    }
+                    return Ok(());
+                }
+                Action::ScrollDown => {
+                    // Navigate translation list (only when ready)
+                    if matches!(self.download_status, DownloadStatus::Ready) {
+                        let count = crate::bible::translations::AVAILABLE_TRANSLATIONS.len();
+                        self.download_selected_index = (self.download_selected_index + 1) % count;
+                    }
+                    return Ok(());
+                }
+                Action::Enter => {
+                    match &self.download_status {
+                        DownloadStatus::Ready => {
+                            // Start download with selected translation
+                            let translations = crate::bible::translations::AVAILABLE_TRANSLATIONS;
+                            if let Some(translation) = translations.get(self.download_selected_index) {
+                                return self.start_bible_download_for(translation);
+                            }
+                            return Ok(());
+                        }
+                        DownloadStatus::Complete => {
+                            // Close modal and reload Bible
+                            self.download_modal_open = false;
+                            self.download_status = DownloadStatus::Ready;
+                            return self.reload_bible();
+                        }
+                        DownloadStatus::Failed(_) => {
+                            // Reset to ready state to try again
+                            self.download_status = DownloadStatus::Ready;
+                            return Ok(());
+                        }
+                        DownloadStatus::Downloading(_) => {
+                            // Ignore while downloading
+                            return Ok(());
+                        }
+                    }
+                }
+                Action::Quit => {
+                    self.should_quit = true;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
         match action {
             Action::Quit => self.should_quit = true,
 
@@ -432,6 +524,14 @@ impl App {
 
             Action::OpenHelp => {
                 self.help_open = true;
+            }
+
+            Action::DownloadBible => {
+                // Only show download modal if using sample data
+                if self.using_sample_data {
+                    self.download_modal_open = true;
+                    self.download_status = DownloadStatus::Ready;
+                }
             }
 
             Action::ToggleBookmark => {
@@ -674,6 +774,184 @@ impl App {
             })
             .collect()
     }
+
+    /// Start downloading the Bible for a specific translation
+    fn start_bible_download_for(&mut self, translation: &crate::bible::translations::TranslationInfo) -> Result<()> {
+        self.download_status = DownloadStatus::Downloading(format!("Downloading {}...", translation.name));
+
+        // Perform the download synchronously (blocking)
+        match download_bible(translation) {
+            Ok(_) => {
+                self.download_status = DownloadStatus::Complete;
+            }
+            Err(e) => {
+                self.download_status = DownloadStatus::Failed(e.to_string());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Reload the Bible after download
+    fn reload_bible(&mut self) -> Result<()> {
+        let translations = crate::bible::translations::AVAILABLE_TRANSLATIONS;
+        if let Some(translation) = translations.get(self.download_selected_index) {
+            let data_dir = crate::config::data_dir()?;
+            let translations_dir = data_dir.join("translations");
+            let db_path = translations_dir.join(format!("{}.sqlite", translation.id.to_lowercase()));
+
+            if db_path.exists() {
+                let loader = BibleLoader::new(db_path.to_string_lossy().as_ref())?;
+                self.loader = Some(loader);
+                self.using_sample_data = false;
+                self.settings.translation = translation.id.to_string();
+                self.settings.save()?;
+                self.load_current_chapter()?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Download a Bible translation from the internet
+fn download_bible(translation: &crate::bible::translations::TranslationInfo) -> Result<()> {
+    use crate::bible::loader::init_database;
+    use std::io::Read;
+
+    let response = ureq::get(translation.url)
+        .call()
+        .map_err(|e| anyhow::anyhow!("Download failed: {}", e))?;
+
+    // Check response status
+    let status = response.status();
+    if status != 200 {
+        anyhow::bail!("Server returned status {}", status);
+    }
+
+    let mut json_content = String::new();
+    response.into_reader().read_to_string(&mut json_content)?;
+
+    // Check we got some content
+    if json_content.is_empty() {
+        anyhow::bail!("Empty response from server");
+    }
+
+    // Parse the JSON with better error message
+    let raw_data: serde_json::Value = serde_json::from_str(&json_content)
+        .map_err(|e| {
+            let preview: String = json_content.chars().take(100).collect();
+            anyhow::anyhow!("Invalid JSON: {}. Response starts with: {}", e, preview)
+        })?;
+
+    // Set up database path - use translation ID as filename
+    let data_dir = crate::config::data_dir()?;
+    let translations_dir = data_dir.join("translations");
+    std::fs::create_dir_all(&translations_dir)?;
+    let db_path = translations_dir.join(format!("{}.sqlite", translation.id.to_lowercase()));
+
+    // Remove old database if exists
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)?;
+    }
+
+    // Initialize database schema
+    init_database(&db_path)?;
+
+    // Open database and import
+    let conn = rusqlite::Connection::open(&db_path)?;
+
+    // Insert translation metadata
+    conn.execute(
+        "INSERT INTO translations (id, name, abbreviation, language, description)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            translation.id,
+            translation.name,
+            translation.id,
+            translation.language,
+            translation.description
+        ],
+    )?;
+
+    // Import books and verses - handle different JSON formats
+    // Format 1 (thiagobodruk): [{"book": "Genesis", "chapters": [[verses...], ...]}]
+    // Format 2 (scrollmapper): {"resultset": {"row": [{"field": [book_id, chapter, verse, text]}]}}
+
+    if let Some(books) = raw_data.as_array() {
+        // Format 1: Array of books with chapters
+        import_thiagobodruk_format(&conn, books)?;
+    } else if let Some(resultset) = raw_data.get("resultset") {
+        // Format 2: Scrollmapper format
+        import_scrollmapper_format(&conn, resultset)?;
+    } else {
+        anyhow::bail!("Unknown Bible JSON format");
+    }
+
+    Ok(())
+}
+
+/// Import from thiagobodruk JSON format
+fn import_thiagobodruk_format(conn: &rusqlite::Connection, books: &[serde_json::Value]) -> Result<()> {
+    for book in books {
+        let book_name = book.get("book")
+            .or_else(|| book.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+
+        if let Some(chapters) = book.get("chapters").and_then(|c| c.as_array()) {
+            for (chapter_idx, chapter) in chapters.iter().enumerate() {
+                let chapter_num = (chapter_idx + 1) as u32;
+
+                if let Some(verses) = chapter.as_array() {
+                    for (verse_idx, verse_text) in verses.iter().enumerate() {
+                        let verse_num = (verse_idx + 1) as u32;
+                        let text = verse_text.as_str().unwrap_or("");
+
+                        conn.execute(
+                            "INSERT INTO verses (book, chapter, verse, text)
+                             VALUES (?1, ?2, ?3, ?4)",
+                            rusqlite::params![book_name, chapter_num, verse_num, text],
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Import from scrollmapper JSON format
+fn import_scrollmapper_format(conn: &rusqlite::Connection, resultset: &serde_json::Value) -> Result<()> {
+    use crate::bible::BOOK_ORDER;
+
+    if let Some(rows) = resultset.get("row").and_then(|r| r.as_array()) {
+        for row in rows {
+            if let Some(fields) = row.get("field").and_then(|f| f.as_array()) {
+                // Fields: [book_id, chapter, verse, text]
+                if fields.len() >= 4 {
+                    let book_id = fields[0].as_i64().or_else(|| fields[0].as_str().and_then(|s| s.parse().ok())).unwrap_or(1) as usize;
+                    let chapter = fields[1].as_i64().or_else(|| fields[1].as_str().and_then(|s| s.parse().ok())).unwrap_or(1) as u32;
+                    let verse = fields[2].as_i64().or_else(|| fields[2].as_str().and_then(|s| s.parse().ok())).unwrap_or(1) as u32;
+                    let text = fields[3].as_str().unwrap_or("");
+
+                    // Convert book_id to book name using BOOK_ORDER
+                    let book_name = if book_id > 0 && book_id <= BOOK_ORDER.len() {
+                        BOOK_ORDER[book_id - 1].0
+                    } else {
+                        "Unknown"
+                    };
+
+                    conn.execute(
+                        "INSERT OR IGNORE INTO verses (book, chapter, verse, text)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![book_name, chapter, verse, text],
+                    )?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 impl Drop for App {
